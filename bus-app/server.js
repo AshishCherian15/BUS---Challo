@@ -62,7 +62,7 @@ http.createServer(async(req,res)=>{
   if(p==='/api/data'&&req.method==='POST'){
    if(!authed(req))return json(res,401,{error:'Please sign in again.'});
    const d=await body(req);if(!valid(d))return json(res,400,{error:'Data failed validation.'});
-   try{await writeData(d)}catch(e){return json(res,502,{error:'Could not save. Try again.'})}
+   try{await writeData(d)}catch(e){console.error('save failed:',e);return json(res,502,{error:'Could not save: '+(e.message||e)})}
    return json(res,200,{ok:true});
   }
   let f=p==='/admin'?'/admin.html':(p==='/'||p.startsWith('/s/'))?'/index.html':p;
