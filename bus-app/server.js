@@ -9,6 +9,30 @@ const same=(a,b)=>{const x=crypto.createHash('sha256').update(a).digest(),y=cryp
 const token=req=>((req.headers.cookie||'').match(/(?:^|; )sid=([a-f0-9]+)/)||[])[1];
 const authed=req=>{const t=token(req),e=sessions.get(t);return !!e&&e>Date.now()};
 const body=req=>new Promise((ok,no)=>{let b='';req.on('data',c=>{b+=c;if(b.length>3e6){no(new Error('big'));req.destroy()}});req.on('end',()=>{try{ok(JSON.parse(b||'{}'))}catch(e){no(e)}})});
+const GH={repo:process.env.GITHUB_REPO||'AshishCherian15/BUS---Challo',branch:process.env.GITHUB_BRANCH||'main',path:process.env.GITHUB_DATA_PATH||'bus-app/data/data.json',token:process.env.GITHUB_TOKEN||''};
+const ghOn=()=>!!GH.token;
+const ghH=()=>({'Authorization':'Bearer '+GH.token,'Accept':'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28','User-Agent':'bus-timings'});
+let ghCache={t:0,v:null};
+async function ghRead(){
+ const r=await fetch(`https://api.github.com/repos/${GH.repo}/contents/${GH.path}?ref=${GH.branch}`,{headers:ghH(),cache:'no-store'});
+ if(!r.ok)throw new Error('GitHub read '+r.status);
+ const j=await r.json();
+ return{data:JSON.parse(Buffer.from(j.content,'base64').toString('utf8')),sha:j.sha};
+}
+async function ghWrite(d,sha){
+ const r=await fetch(`https://api.github.com/repos/${GH.repo}/contents/${GH.path}`,{method:'PUT',headers:{...ghH(),'Content-Type':'application/json'},body:JSON.stringify({message:'Update bus timings',content:Buffer.from(JSON.stringify(d,null,1)).toString('base64'),sha,branch:GH.branch})});
+ if(!r.ok)throw new Error('GitHub write '+r.status);
+}
+async function readData(){
+ if(!ghOn())return{data:JSON.parse(fs.readFileSync(DATA,'utf8')),sha:null};
+ if(Date.now()-ghCache.t<20000)return ghCache.v;
+ const v=await ghRead();ghCache={t:Date.now(),v};return v;
+}
+async function writeData(d){
+ const out={stops:d.stops,buses:d.buses,trips:d.trips};
+ if(!ghOn()){fs.writeFileSync(DATA+'.tmp',JSON.stringify(out,null,1));fs.renameSync(DATA+'.tmp',DATA);return}
+ for(let i=0;i<2;i++){const{sha}=await ghRead();try{await ghWrite(out,sha);ghCache.t=0;return}catch(e){if(i)throw e}}
+}
 const str=(v,n=120)=>typeof v==='string'&&v.length>0&&v.length<=n;
 function valid(d){
  const T=/^([01]\d|2[0-3]):[0-5]\d$/;
@@ -24,7 +48,7 @@ function valid(d){
 http.createServer(async(req,res)=>{
  const u=new URL(req.url,'http://x'),p=u.pathname;
  try{
-  if(p==='/api/data'&&req.method==='GET')return json(res,200,JSON.parse(fs.readFileSync(DATA,'utf8')));
+  if(p==='/api/data'&&req.method==='GET')return json(res,200,(await readData()).data);
   if(p==='/api/me')return json(res,authed(req)?200:401,{ok:authed(req)});
   if(p==='/api/login'&&req.method==='POST'){
    const ip=req.socket.remoteAddress,f=fails.get(ip)||{n:0,t:0};
@@ -38,8 +62,8 @@ http.createServer(async(req,res)=>{
   if(p==='/api/data'&&req.method==='POST'){
    if(!authed(req))return json(res,401,{error:'Please sign in again.'});
    const d=await body(req);if(!valid(d))return json(res,400,{error:'Data failed validation.'});
-   const out={stops:d.stops,buses:d.buses,trips:d.trips};
-   fs.writeFileSync(DATA+'.tmp',JSON.stringify(out,null,1));fs.renameSync(DATA+'.tmp',DATA);return json(res,200,{ok:true});
+   try{await writeData(d)}catch(e){return json(res,502,{error:'Could not save. Try again.'})}
+   return json(res,200,{ok:true});
   }
   let f=p==='/admin'?'/admin.html':(p==='/'||p.startsWith('/s/'))?'/index.html':p;
   const full=path.join(PUB,path.normalize(f));
