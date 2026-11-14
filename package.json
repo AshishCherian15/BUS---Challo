@@ -1,1 +1,16 @@
-{"name":"bus-timings","version":"1.0.0","private":true,"scripts":{"start":"node server.js"},"engines":{"node":">=18"}}
+{
+  "name": "bus-timings",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Live bus-stop timings site with Supabase backend (routes, photos, announcements, analytics, QR).",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "dotenv": "^16.4.5"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
